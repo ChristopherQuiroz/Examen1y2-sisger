@@ -42,10 +42,10 @@
 					"name": "validos"
 				},
 				{
-					"name": "existeAdmision"
+					"name": "deduplicar"
 				},
 				{
-					"name": "deduplicar"
+					"name": "union1"
 				}
 			],
 			"scriptLines": [
@@ -71,20 +71,26 @@
 				"          admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
 				"          icd_code = upper(replace(replace(trim(split(icd_code, ',')[1]), '-', '.'), ' ', '')),",
 				"          diagnosis_description = iif(isNull(diagnosis_description) || trim(diagnosis_description) == '', toString(null()), trim(diagnosis_description)),",
-				"          severity = iif(isNull(severity), toString(null()), iif(regexMatch(lower(trim(severity)), '^(mild|moderate|severe|critical)$'), initcap(lower(trim(severity))), toString(null())))) ~> limpiar",
+				"          severity = iif(\r",
+				"    isNull(severity), \r",
+				"    toString(null()), \r",
+				"    iif(\r",
+				"        regexMatch(lower(trim(severity)), '^(mild|moderate|severe|critical)$'), \r",
+				"        initCap(lower(trim(severity))), \r",
+				"        toString(null())\r",
+				"    )\r",
+				")) ~> limpiar",
 				"limpiar derive(icd_code = iif(!isNull(icd_code) && instr(icd_code, '.') == 0 && length(icd_code) > 3, concat(left(icd_code, 3), '.', substring(icd_code, 4, length(icd_code))), icd_code)) ~> normalizarIcd",
 				"normalizarIcd filter(!isNull(diagnosis_id)",
 				"&& !isNull(admission_id)",
 				"&& !isNull(icd_code)",
 				"&& regexMatch(icd_code, '^[A-Z]\\\\d{2}(\\\\.[A-Z0-9]{1,4})?$')) ~> validos",
-				"validos, admisiones exists(validos@admission_id == admisiones@admission_id,",
-				"     negate:false,",
-				"     broadcast: 'auto')~> existeAdmision",
-				"existeAdmision aggregate(groupBy(diagnosis_id),",
-				"          admission_id = first(admission_id),",
+				"union1 aggregate(groupBy(diagnosis_id),",
+				"     admission_id = first(admission_id),",
 				"          icd_code = first(icd_code),",
 				"          diagnosis_description = first(diagnosis_description),",
 				"          severity = first(severity)) ~> deduplicar",
+				"validos, admisiones union(byName: true)~> union1",
 				"deduplicar sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
