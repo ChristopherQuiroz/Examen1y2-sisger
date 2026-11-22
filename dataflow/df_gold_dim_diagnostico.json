@@ -6,11 +6,57 @@
 		},
 		"type": "MappingDataFlow",
 		"typeProperties": {
-			"sources": [],
-			"sinks": [],
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_diagnoses_sql",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "gold_dim_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
 			"transformations": [],
 			"scriptLines": [
-				""
+				"source(output(",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     query: 'SELECT\\n    d.icd_code                                          AS codigo_icd,\\n    COALESCE(\\n        CASE d.icd_code\\n            WHEN \\'E11.9\\'    THEN \\'Diabetes mellitus tipo 2 sin complicaciones\\'\\n            WHEN \\'I10\\'      THEN \\'Hipertension esencial\\'\\n            WHEN \\'J45.909\\'  THEN \\'Asma no especificada\\'\\n            WHEN \\'K21.9\\'    THEN \\'Enfermedad por reflujo gastroesofagico\\'\\n            WHEN \\'M54.5\\'    THEN \\'Dolor lumbar bajo\\'\\n            WHEN \\'N39.0\\'    THEN \\'Infeccion de vias urinarias\\'\\n            WHEN \\'R51\\'      THEN \\'Cefalea\\'\\n            WHEN \\'F32.9\\'    THEN \\'Trastorno depresivo mayor, episodio unico\\'\\n            WHEN \\'C50.911\\'  THEN \\'Neoplasia maligna de mama\\'\\n            WHEN \\'S72.001A\\' THEN \\'Fractura de cuello de femur, encuentro inicial\\'\\n        END,\\n        MIN(d.diagnosis_description))                   AS descripcion_patologia,\\n    COALESCE(d.severity, \\'Desconocido\\')                 AS nivel_severidad\\nFROM silver.diagnoses d\\nGROUP BY d.icd_code, COALESCE(d.severity, \\'Desconocido\\')\\nUNION ALL\\nSELECT \\'N/A\\', \\'Sin diagnostico registrado\\', \\'Desconocido\\'',",
+				"     format: 'query') ~> source1",
+				"source1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          codigo_icd,",
+				"          descripcion_patologia,",
+				"          nivel_severidad",
+				"     )) ~> sink1"
 			]
 		}
 	}

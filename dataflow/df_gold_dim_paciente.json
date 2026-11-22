@@ -6,11 +6,72 @@
 		},
 		"type": "MappingDataFlow",
 		"typeProperties": {
-			"sources": [],
-			"sinks": [],
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_patients_sql",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "gold_dim_paciente",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
 			"transformations": [],
 			"scriptLines": [
-				""
+				"source(output(",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     query: 'SELECT\\n    p.patient_id                                    AS patient_id_bk,\\n    p.full_name                                     AS nombre_completo,\\n    CASE p.gender\\n        WHEN \\'Male\\'   THEN \\'Masculino\\'\\n        WHEN \\'Female\\' THEN \\'Femenino\\'\\n        ELSE \\'Otro\\'\\n    END                                             AS genero,\\n    p.date_of_birth                                 AS fecha_nacimiento,\\n    CASE\\n        WHEN p.date_of_birth IS NULL THEN NULL\\n        WHEN x.edad <= 18 THEN \\'0-18\\'\\n        WHEN x.edad <= 35 THEN \\'19-35\\'\\n        WHEN x.edad <= 60 THEN \\'36-60\\'\\n        ELSE \\'60+\\'\\n    END                                             AS rango_etario,\\n    p.email                                         AS correo_electronico,\\n    p.address                                       AS direccion,\\n    COALESCE(p.insurance_provider, \\'Desconocido\\')   AS proveedor_seguro\\nFROM silver.patients p\\nCROSS APPLY (\\n    SELECT DATEDIFF(YEAR, p.date_of_birth, GETDATE())\\n           - CASE WHEN DATEADD(YEAR, DATEDIFF(YEAR, p.date_of_birth, GETDATE()), p.date_of_birth) > GETDATE()\\n                  THEN 1 ELSE 0 END AS edad\\n) x',",
+				"     format: 'query') ~> source1",
+				"source1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          paciente_key as integer,",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          patient_id_bk,",
+				"          nombre_completo,",
+				"          genero,",
+				"          fecha_nacimiento,",
+				"          rango_etario,",
+				"          correo_electronico,",
+				"          direccion,",
+				"          proveedor_seguro",
+				"     )) ~> sink1"
 			]
 		}
 	}
