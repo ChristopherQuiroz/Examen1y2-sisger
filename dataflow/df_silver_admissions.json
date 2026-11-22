@@ -13,13 +13,6 @@
 						"type": "DatasetReference"
 					},
 					"name": "bronce"
-				},
-				{
-					"dataset": {
-						"referenceName": "dw_silver_patients_sql",
-						"type": "DatasetReference"
-					},
-					"name": "pacientes"
 				}
 			],
 			"sinks": [
@@ -58,13 +51,6 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> bronce",
-				"source(output(",
-				"          patient_id as integer",
-				"     ),",
-				"     allowSchemaDrift: true,",
-				"     validateSchema: false,",
-				"     isolationLevel: 'READ_UNCOMMITTED',",
-				"     format: 'table') ~> pacientes",
 				"bronce derive(admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
 				"          patient_id = iif(!isNull(patient_id) && regexMatch(trim(patient_id), '^\\\\d+$'), toInteger(trim(patient_id)), toInteger(null())),",
 				"          admission_date = iif(isNull(admission_date) || trim(admission_date) == '', toDate(null()),",
