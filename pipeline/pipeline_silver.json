@@ -155,39 +155,6 @@
 					},
 					"traceLevel": "Fine"
 				}
-			},
-			{
-				"name": "ReconciliarSilver",
-				"description": "Compara filas bronze vs silver.",
-				"type": "Script",
-				"dependsOn": [
-					{
-						"activity": "SL_04_Billing",
-						"dependencyConditions": [
-							"Succeeded"
-						]
-					}
-				],
-				"policy": {
-					"timeout": "0.12:00:00",
-					"retry": 0,
-					"retryIntervalInSeconds": 30,
-					"secureOutput": false,
-					"secureInput": false
-				},
-				"userProperties": [],
-				"linkedServiceName": {
-					"referenceName": "sql_dw_hospital",
-					"type": "LinkedServiceReference"
-				},
-				"typeProperties": {
-					"scripts": [
-						{
-							"type": "Query",
-							"text": "-- Reconciliacion bronze vs silver (filas descartadas por calidad o integridad referencial).\nSELECT 'patients' AS Tabla, (SELECT COUNT(*) FROM bronze.patients) AS Bronze, (SELECT COUNT(*) FROM silver.patients) AS Silver, (SELECT COUNT(*) FROM bronze.patients) - (SELECT COUNT(*) FROM silver.patients) AS Descartadas\nUNION ALL SELECT 'admissions', (SELECT COUNT(*) FROM bronze.admissions), (SELECT COUNT(*) FROM silver.admissions), (SELECT COUNT(*) FROM bronze.admissions) - (SELECT COUNT(*) FROM silver.admissions)\nUNION ALL SELECT 'diagnoses', (SELECT COUNT(*) FROM bronze.diagnoses), (SELECT COUNT(*) FROM silver.diagnoses), (SELECT COUNT(*) FROM bronze.diagnoses) - (SELECT COUNT(*) FROM silver.diagnoses)\nUNION ALL SELECT 'billing', (SELECT COUNT(*) FROM bronze.billing), (SELECT COUNT(*) FROM silver.billing), (SELECT COUNT(*) FROM bronze.billing) - (SELECT COUNT(*) FROM silver.billing);"
-						}
-					]
-				}
 			}
 		],
 		"folder": {
