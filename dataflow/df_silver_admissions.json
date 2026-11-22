@@ -43,9 +43,6 @@
 				},
 				{
 					"name": "deduplicar"
-				},
-				{
-					"name": "union1"
 				}
 			],
 			"scriptLines": [
@@ -102,13 +99,12 @@
 				"&& !isNull(admission_date)",
 				"&& !isNull(department)",
 				"&& !isNull(attending_doctor_id)) ~> validos",
-				"union1 aggregate(groupBy(admission_id),",
+				"validos aggregate(groupBy(admission_id),",
 				"     patient_id = first(patient_id),",
 				"          admission_date = first(admission_date),",
 				"          discharge_date = first(discharge_date),",
 				"          department = first(department),",
 				"          attending_doctor_id = first(attending_doctor_id)) ~> deduplicar",
-				"validos, pacientes union(byName: true)~> union1",
 				"deduplicar sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
