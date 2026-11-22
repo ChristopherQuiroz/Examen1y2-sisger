@@ -13,13 +13,6 @@
 						"type": "DatasetReference"
 					},
 					"name": "bronce"
-				},
-				{
-					"dataset": {
-						"referenceName": "dw_silver_admissions_sql",
-						"type": "DatasetReference"
-					},
-					"name": "admisiones"
 				}
 			],
 			"sinks": [
@@ -40,9 +33,6 @@
 				},
 				{
 					"name": "deduplicar"
-				},
-				{
-					"name": "union1"
 				}
 			],
 			"scriptLines": [
@@ -58,13 +48,6 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> bronce",
-				"source(output(",
-				"          admission_id as integer",
-				"     ),",
-				"     allowSchemaDrift: true,",
-				"     validateSchema: false,",
-				"     isolationLevel: 'READ_UNCOMMITTED',",
-				"     format: 'table') ~> admisiones",
 				"bronce derive(billing_id = iif(!isNull(billing_id) && regexMatch(trim(billing_id), '^\\\\d+$'), toInteger(trim(billing_id)), toInteger(null())),",
 				"          admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
 				"          charge_type = iif(isNull(charge_type) || trim(charge_type) == '', 'Unknown', initCap(lower(trim(charge_type)))),",
@@ -84,13 +67,12 @@
 				"&& amount > 0",
 				"&& !isNull(payment_status)",
 				"&& regexMatch(payment_status, '^(Paid|Pending|Unpaid|Overdue)$')) ~> validos",
-				"union1 aggregate(groupBy(billing_id),",
+				"validos aggregate(groupBy(billing_id),",
 				"     admission_id = first(admission_id),",
 				"          charge_type = first(charge_type),",
 				"          amount = first(amount),",
 				"          payment_status = first(payment_status),",
 				"          payment_date = first(payment_date)) ~> deduplicar",
-				"validos, admisiones union(byName: true)~> union1",
 				"deduplicar sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
