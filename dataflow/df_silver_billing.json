@@ -1,0 +1,125 @@
+{
+	"name": "df_silver_billing",
+	"properties": {
+		"folder": {
+			"name": "Silver"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "dw_bronze_billing",
+						"type": "DatasetReference"
+					},
+					"name": "bronce"
+				},
+				{
+					"dataset": {
+						"referenceName": "dw_silver_admissions_sql",
+						"type": "DatasetReference"
+					},
+					"name": "admisiones"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_billing_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "limpiar"
+				},
+				{
+					"name": "validos"
+				},
+				{
+					"name": "existeAdmision"
+				},
+				{
+					"name": "deduplicar"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          billing_id as string,",
+				"          admission_id as string,",
+				"          charge_type as string,",
+				"          amount as string,",
+				"          payment_status as string,",
+				"          payment_date as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> bronce",
+				"source(output(",
+				"          admission_id as integer",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> admisiones",
+				"bronce derive(billing_id = iif(!isNull(billing_id) && regexMatch(trim(billing_id), '^\\\\d+$'), toInteger(trim(billing_id)), toInteger(null())),",
+				"          admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
+				"          charge_type = iif(isNull(charge_type) || trim(charge_type) == '', 'Unknown', initcap(lower(trim(charge_type)))),",
+				"          amount = iif(!isNull(amount) && regexMatch(trim(replace(replace(replace(upper(trim(amount)), 'USD', ''), '$', ''), ',', '')), '^-?\\\\d+(\\\\.\\\\d+)?$'), toDecimal(trim(replace(replace(replace(upper(trim(amount)), 'USD', ''), '$', ''), ',', '')), 12, 2), toDecimal(null(), 12, 2)),",
+				"          payment_status = iif(isNull(payment_status) || trim(payment_status) == '', toString(null()), initcap(lower(trim(payment_status)))),",
+				"          payment_date = iif(isNull(payment_date) || trim(payment_date) == '', toDate(null()),",
+				"    case(",
+				"        regexMatch(trim(payment_date), '^\\\\d{4}-\\\\d{2}-\\\\d{2}$'), toDate(trim(payment_date), 'yyyy-MM-dd'),",
+				"        regexMatch(trim(payment_date), '^\\\\d{2}/\\\\d{2}/\\\\d{4}$'), toDate(trim(payment_date), 'MM/dd/yyyy'),",
+				"        regexMatch(trim(payment_date), '^\\\\d{2}-[A-Za-z]{3}-\\\\d{4}$'), toDate(trim(payment_date), 'dd-MMM-yyyy'),",
+				"        regexMatch(trim(payment_date), '^[A-Za-z]+ \\\\d{2}, \\\\d{4}$'), toDate(trim(payment_date), 'MMMM dd, yyyy'),",
+				"        regexMatch(trim(payment_date), '^\\\\d{2}-\\\\d{2}-\\\\d{2}$'), toDate(concat('20', substring(trim(payment_date), 7, 2), '-', substring(trim(payment_date), 1, 2), '-', substring(trim(payment_date), 4, 2)), 'yyyy-MM-dd'),",
+				"        toDate(null())))) ~> limpiar",
+				"limpiar filter(!isNull(billing_id)",
+				"&& !isNull(admission_id)",
+				"&& !isNull(amount)",
+				"&& amount > 0",
+				"&& !isNull(payment_status)",
+				"&& regexMatch(payment_status, '^(Paid|Pending|Unpaid|Overdue)$')) ~> validos",
+				"validos, admisiones exists(validos@admission_id == admisiones@admission_id,",
+				"     negate:false,",
+				"     broadcast: 'auto')~> existeAdmision",
+				"existeAdmision aggregate(groupBy(billing_id),",
+				"          admission_id = first(admission_id),",
+				"          charge_type = first(charge_type),",
+				"          amount = first(amount),",
+				"          payment_status = first(payment_status),",
+				"          payment_date = first(payment_date)) ~> deduplicar",
+				"deduplicar sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          billing_id as integer,",
+				"          admission_id as integer,",
+				"          charge_type as string,",
+				"          amount as decimal(12,2),",
+				"          payment_status as string,",
+				"          payment_date as date",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          billing_id,",
+				"          admission_id,",
+				"          charge_type,",
+				"          amount,",
+				"          payment_status,",
+				"          payment_date",
+				"     )) ~> sink1"
+			]
+		}
+	}
+}

@@ -1,0 +1,143 @@
+{
+	"name": "df_silver_admissions",
+	"properties": {
+		"folder": {
+			"name": "Silver"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "dw_bronze_admissions",
+						"type": "DatasetReference"
+					},
+					"name": "bronce"
+				},
+				{
+					"dataset": {
+						"referenceName": "dw_silver_patients_sql",
+						"type": "DatasetReference"
+					},
+					"name": "pacientes"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_admissions_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "limpiar"
+				},
+				{
+					"name": "coherenciaFechas"
+				},
+				{
+					"name": "validos"
+				},
+				{
+					"name": "existePaciente"
+				},
+				{
+					"name": "deduplicar"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          admission_id as string,",
+				"          patient_id as string,",
+				"          admission_date as string,",
+				"          discharge_date as string,",
+				"          department as string,",
+				"          attending_doctor_id as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> bronce",
+				"source(output(",
+				"          patient_id as integer",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> pacientes",
+				"bronce derive(admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
+				"          patient_id = iif(!isNull(patient_id) && regexMatch(trim(patient_id), '^\\\\d+$'), toInteger(trim(patient_id)), toInteger(null())),",
+				"          admission_date = iif(isNull(admission_date) || trim(admission_date) == '', toDate(null()),",
+				"    case(",
+				"        regexMatch(trim(admission_date), '^\\\\d{4}-\\\\d{2}-\\\\d{2}$'), toDate(trim(admission_date), 'yyyy-MM-dd'),",
+				"        regexMatch(trim(admission_date), '^\\\\d{2}/\\\\d{2}/\\\\d{4}$'), toDate(trim(admission_date), 'MM/dd/yyyy'),",
+				"        regexMatch(trim(admission_date), '^\\\\d{2}-[A-Za-z]{3}-\\\\d{4}$'), toDate(trim(admission_date), 'dd-MMM-yyyy'),",
+				"        regexMatch(trim(admission_date), '^[A-Za-z]+ \\\\d{2}, \\\\d{4}$'), toDate(trim(admission_date), 'MMMM dd, yyyy'),",
+				"        regexMatch(trim(admission_date), '^\\\\d{2}-\\\\d{2}-\\\\d{2}$'), toDate(concat('20', substring(trim(admission_date), 7, 2), '-', substring(trim(admission_date), 1, 2), '-', substring(trim(admission_date), 4, 2)), 'yyyy-MM-dd'),",
+				"        toDate(null()))),",
+				"          discharge_date = iif(isNull(discharge_date) || trim(discharge_date) == '', toDate(null()),",
+				"    case(",
+				"        regexMatch(trim(discharge_date), '^\\\\d{4}-\\\\d{2}-\\\\d{2}$'), toDate(trim(discharge_date), 'yyyy-MM-dd'),",
+				"        regexMatch(trim(discharge_date), '^\\\\d{2}/\\\\d{2}/\\\\d{4}$'), toDate(trim(discharge_date), 'MM/dd/yyyy'),",
+				"        regexMatch(trim(discharge_date), '^\\\\d{2}-[A-Za-z]{3}-\\\\d{4}$'), toDate(trim(discharge_date), 'dd-MMM-yyyy'),",
+				"        regexMatch(trim(discharge_date), '^[A-Za-z]+ \\\\d{2}, \\\\d{4}$'), toDate(trim(discharge_date), 'MMMM dd, yyyy'),",
+				"        regexMatch(trim(discharge_date), '^\\\\d{2}-\\\\d{2}-\\\\d{2}$'), toDate(concat('20', substring(trim(discharge_date), 7, 2), '-', substring(trim(discharge_date), 1, 2), '-', substring(trim(discharge_date), 4, 2)), 'yyyy-MM-dd'),",
+				"        toDate(null()))),",
+				"          department = case(isNull(department) || trim(department) == '', toString(null()),",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*(surg).*$'), 'General Surgery',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*(neur|nuer).*$'), 'Neurology',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*cardi.*$'), 'Cardiology',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*ortho.*$'), 'Orthopedics',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^(.*emer.*|er)$'), 'Emergency',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*(ped|paed).*$'), 'Pediatrics',",
+				"        regexMatch(lower(regexReplace(trim(department), '[^A-Za-z]', '')), '^.*onco.*$'), 'Oncology',",
+				"        initcap(trim(department))),",
+				"          attending_doctor_id = iif(!isNull(attending_doctor_id) && regexMatch(trim(attending_doctor_id), '^\\\\d+$'), toInteger(trim(attending_doctor_id)), toInteger(null()))) ~> limpiar",
+				"limpiar derive(discharge_date = iif(!isNull(discharge_date) && !isNull(admission_date) && discharge_date < admission_date, toDate(null()), discharge_date)) ~> coherenciaFechas",
+				"coherenciaFechas filter(!isNull(admission_id)",
+				"&& !isNull(patient_id)",
+				"&& !isNull(admission_date)",
+				"&& !isNull(department)",
+				"&& !isNull(attending_doctor_id)) ~> validos",
+				"validos, pacientes exists(validos@patient_id == pacientes@patient_id,",
+				"     negate:false,",
+				"     broadcast: 'auto')~> existePaciente",
+				"existePaciente aggregate(groupBy(admission_id),",
+				"          patient_id = first(patient_id),",
+				"          admission_date = first(admission_date),",
+				"          discharge_date = first(discharge_date),",
+				"          department = first(department),",
+				"          attending_doctor_id = first(attending_doctor_id)) ~> deduplicar",
+				"deduplicar sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          admission_id as integer,",
+				"          patient_id as integer,",
+				"          admission_date as date,",
+				"          discharge_date as date,",
+				"          department as string,",
+				"          attending_doctor_id as integer",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          admission_id,",
+				"          patient_id,",
+				"          admission_date,",
+				"          discharge_date,",
+				"          department,",
+				"          attending_doctor_id",
+				"     )) ~> sink1"
+			]
+		}
+	}
+}

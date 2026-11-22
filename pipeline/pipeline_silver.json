@@ -1,0 +1,198 @@
+{
+	"name": "pipeline_silver",
+	"properties": {
+		"activities": [
+			{
+				"name": "AuditarBronzeYLimpiarSilver",
+				"description": "Audita bronze y vacia silver.* respetando las FK antes de recargar.",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "sql_dw_hospital",
+					"type": "LinkedServiceReference"
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "-- Auditoria de calidad de bronze (visible en la salida de la actividad).\n-- Los residuos que aqui aparezcan son filas que silver filtrara por diseño.\nSELECT 'patients' AS Tabla, COUNT(*) AS Filas, SUM(CASE WHEN NULLIF(LTRIM(RTRIM(patient_id)), '') IS NULL THEN 1 ELSE 0 END) AS SinId FROM bronze.patients\nUNION ALL\nSELECT 'admissions', COUNT(*), SUM(CASE WHEN NULLIF(LTRIM(RTRIM(admission_id)), '') IS NULL OR NULLIF(LTRIM(RTRIM(patient_id)), '') IS NULL THEN 1 ELSE 0 END) FROM bronze.admissions\nUNION ALL\nSELECT 'diagnoses', COUNT(*), SUM(CASE WHEN NULLIF(LTRIM(RTRIM(diagnosis_id)), '') IS NULL OR NULLIF(LTRIM(RTRIM(admission_id)), '') IS NULL THEN 1 ELSE 0 END) FROM bronze.diagnoses\nUNION ALL\nSELECT 'billing', COUNT(*), SUM(CASE WHEN NULLIF(LTRIM(RTRIM(billing_id)), '') IS NULL OR NULLIF(LTRIM(RTRIM(admission_id)), '') IS NULL THEN 1 ELSE 0 END) FROM bronze.billing;"
+						},
+						{
+							"type": "Query",
+							"text": "-- Limpieza de silver en orden de dependencias (hijos primero) para recarga idempotente.\nDELETE FROM silver.billing;\nDELETE FROM silver.diagnoses;\nDELETE FROM silver.admissions;\nDELETE FROM silver.patients;"
+						}
+					]
+				}
+			},
+			{
+				"name": "SL_01_Patients",
+				"type": "ExecuteDataFlow",
+				"dependsOn": [
+					{
+						"activity": "AuditarBronzeYLimpiarSilver",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataflow": {
+						"referenceName": "df_silver_patients",
+						"type": "DataFlowReference"
+					},
+					"compute": {
+						"coreCount": 8,
+						"computeType": "General"
+					},
+					"traceLevel": "Fine"
+				}
+			},
+			{
+				"name": "SL_02_Admissions",
+				"type": "ExecuteDataFlow",
+				"dependsOn": [
+					{
+						"activity": "SL_01_Patients",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataflow": {
+						"referenceName": "df_silver_admissions",
+						"type": "DataFlowReference"
+					},
+					"compute": {
+						"coreCount": 8,
+						"computeType": "General"
+					},
+					"traceLevel": "Fine"
+				}
+			},
+			{
+				"name": "SL_03_Diagnoses",
+				"type": "ExecuteDataFlow",
+				"dependsOn": [
+					{
+						"activity": "SL_02_Admissions",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataflow": {
+						"referenceName": "df_silver_diagnoses",
+						"type": "DataFlowReference"
+					},
+					"compute": {
+						"coreCount": 8,
+						"computeType": "General"
+					},
+					"traceLevel": "Fine"
+				}
+			},
+			{
+				"name": "SL_04_Billing",
+				"type": "ExecuteDataFlow",
+				"dependsOn": [
+					{
+						"activity": "SL_03_Diagnoses",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataflow": {
+						"referenceName": "df_silver_billing",
+						"type": "DataFlowReference"
+					},
+					"compute": {
+						"coreCount": 8,
+						"computeType": "General"
+					},
+					"traceLevel": "Fine"
+				}
+			},
+			{
+				"name": "ReconciliarSilver",
+				"description": "Compara filas bronze vs silver.",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "SL_04_Billing",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "sql_dw_hospital",
+					"type": "LinkedServiceReference"
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "-- Reconciliacion bronze vs silver (filas descartadas por calidad o integridad referencial).\nSELECT 'patients' AS Tabla, (SELECT COUNT(*) FROM bronze.patients) AS Bronze, (SELECT COUNT(*) FROM silver.patients) AS Silver, (SELECT COUNT(*) FROM bronze.patients) - (SELECT COUNT(*) FROM silver.patients) AS Descartadas\nUNION ALL SELECT 'admissions', (SELECT COUNT(*) FROM bronze.admissions), (SELECT COUNT(*) FROM silver.admissions), (SELECT COUNT(*) FROM bronze.admissions) - (SELECT COUNT(*) FROM silver.admissions)\nUNION ALL SELECT 'diagnoses', (SELECT COUNT(*) FROM bronze.diagnoses), (SELECT COUNT(*) FROM silver.diagnoses), (SELECT COUNT(*) FROM bronze.diagnoses) - (SELECT COUNT(*) FROM silver.diagnoses)\nUNION ALL SELECT 'billing', (SELECT COUNT(*) FROM bronze.billing), (SELECT COUNT(*) FROM silver.billing), (SELECT COUNT(*) FROM bronze.billing) - (SELECT COUNT(*) FROM silver.billing);"
+						}
+					]
+				}
+			}
+		],
+		"folder": {
+			"name": "Silver"
+		},
+		"annotations": []
+	}
+}
