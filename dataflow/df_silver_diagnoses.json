@@ -13,13 +13,6 @@
 						"type": "DatasetReference"
 					},
 					"name": "bronce"
-				},
-				{
-					"dataset": {
-						"referenceName": "dw_silver_admissions_sql",
-						"type": "DatasetReference"
-					},
-					"name": "admisiones"
 				}
 			],
 			"sinks": [
@@ -43,9 +36,6 @@
 				},
 				{
 					"name": "deduplicar"
-				},
-				{
-					"name": "union1"
 				}
 			],
 			"scriptLines": [
@@ -60,13 +50,6 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> bronce",
-				"source(output(",
-				"          admission_id as integer",
-				"     ),",
-				"     allowSchemaDrift: true,",
-				"     validateSchema: false,",
-				"     isolationLevel: 'READ_UNCOMMITTED',",
-				"     format: 'table') ~> admisiones",
 				"bronce derive(diagnosis_id = iif(!isNull(diagnosis_id) && regexMatch(trim(diagnosis_id), '^\\\\d+$'), toInteger(trim(diagnosis_id)), toInteger(null())),",
 				"          admission_id = iif(!isNull(admission_id) && regexMatch(trim(admission_id), '^\\\\d+$'), toInteger(trim(admission_id)), toInteger(null())),",
 				"          icd_code = upper(replace(replace(trim(split(icd_code, ',')[1]), '-', '.'), ' ', '')),",
@@ -85,12 +68,11 @@
 				"&& !isNull(admission_id)",
 				"&& !isNull(icd_code)",
 				"&& regexMatch(icd_code, '^[A-Z]\\\\d{2}(\\\\.[A-Z0-9]{1,4})?$')) ~> validos",
-				"union1 aggregate(groupBy(diagnosis_id),",
+				"validos aggregate(groupBy(diagnosis_id),",
 				"     admission_id = first(admission_id),",
 				"          icd_code = first(icd_code),",
 				"          diagnosis_description = first(diagnosis_description),",
 				"          severity = first(severity)) ~> deduplicar",
-				"validos, admisiones union(byName: true)~> union1",
 				"deduplicar sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
